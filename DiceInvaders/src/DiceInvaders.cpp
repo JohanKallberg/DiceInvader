@@ -115,9 +115,9 @@ int APIENTRY WinMain(
 			if (lastRocketFireTime + 0.5f < newTime){
 				lastRocketFireTime = newTime;
 				if (nbrRockets < maxNbrRockets){
-					nbrRockets++;
 					rocketHorizontalPos[nbrRockets] = horizontalPosition;
 					rocketVerticalPos[nbrRockets] = screenY - 64;
+					nbrRockets++;
 				}
 			}
 		}
@@ -143,7 +143,8 @@ int APIENTRY WinMain(
 		}
 
 		//spawn bombs
-		if (rand() % 100000000 == 1 && nbrBombs<6){
+		int random = rand()/100;
+		if (random == 1 && nbrBombs<6){
 			nbrBombs++;
 			bombHorizontalPos[nbrBombs] = aliensHorizontalPos;//specify wich alien
 			bombVerticalPos[nbrBombs] = aliensVerticalPos+32;
