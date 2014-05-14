@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cstdio>
 #include "DiceInvaders.h"
+#include <vector>
 
 class DiceInvadersLib
 {
@@ -36,6 +37,39 @@ private:
 	HMODULE m_lib;
 };
 
+struct Vec2f{
+	Vec2f(){};
+	Vec2f(float xin, float yin) : x(xin), y(yin){};
+	Vec2f(int xin, int yin) : x(float(xin)), y(float(yin)){};
+	Vec2f operator+ (const Vec2f other){
+		return Vec2f(x + other.x, y + other.y);
+	}
+	Vec2f operator- (const Vec2f other){
+		return Vec2f(x - other.x, y - other.y);
+	}
+	float size(){ 
+		return (x + y) / 2.0f;
+	}
+	float x;
+	float y;
+};
+
+class AlienArmy{
+public:
+	int maxNbrAliensRow = 8;
+	int maxNbrAliensCol = 2;
+	
+	Vec2f aliensPos[8][2];// *64;
+	//float aliensBottomVerticalPos = 0;
+	float alienDirection = 1.0f;
+
+
+
+	int nbrBombs = 0;
+	float bombHorizontalPos[6];
+	float bombVerticalPos[6];
+};
+
 
 int APIENTRY WinMain(
 	HINSTANCE instance,
@@ -52,122 +86,173 @@ int APIENTRY WinMain(
 	ISprite* sprite = system->createSprite("data/player.bmp");
 	ISprite* rocket = system->createSprite("data/rocket.bmp");
 	ISprite* alien1 = system->createSprite("data/enemy1.bmp");
+	ISprite* alien2 = system->createSprite("data/enemy2.bmp");
 	ISprite* bomb = system->createSprite("data/bomb.bmp");
-	float horizontalPosition = screenX/2;
+
+	Vec2f playerPos = Vec2f(screenX / 2, screenY - 32);
 	float lastTime = system->getElapsedTime();
-	float rocketHorizontalPos[6];
-	float rocketVerticalPos[6];
-	int nbrRockets = 0;
+	std::vector<Vec2f> rocketPos;
 	static int maxNbrRockets = 6;
 
-	int nbrAliens = 5;
-	float aliensHorizontalPos = nbrAliens*64;
-	float aliensVerticalPos = 0;
-	bool alienDirectionRight = true; 
-	static int maxNbrAliens = 5;
+
+	int aliensRow = 8;
+	int aliensCol =2;
+
+	std::vector<Vec2f> alienPos;
+	for (int i = 0; i < aliensCol; i++){
+		for (int j = 0; j < aliensRow; j++){
+			alienPos.push_back(Vec2f(j * 64, i * 64));
+		}
+	}
+	int rightAlien = alienPos.size() - 1;
+	int leftAlien = 0;
+	float alienDirection = 1.0f;
+	Vec2f alienMovement = Vec2f(0,0);
+
 
 	int nbrBombs = 0;
-	float bombHorizontalPos[6];
-	float bombVerticalPos[6];
+	Vec2f bombPos[6];
 
+	int lives = 3;
 
 	float lastRocketFireTime = lastTime;
 	while (system->update())
 	{
-		sprite->draw(int(horizontalPosition), screenY - 32);
-		for (int i = 0; i < nbrRockets; i++){
-			rocket->draw(int(rocketHorizontalPos[i]), rocketVerticalPos[i]);
+
+		
+		//draw everything
+		//lives
+		system->drawText(screenX - 142, 8, "Lives: ");
+		for (int i = 1;i <= lives; i++){
+			sprite->draw(screenX - i * 32, 0);
 		}
-		for (int i = 1; i<= nbrAliens; i++){
-			alien1->draw(int(aliensHorizontalPos - i * 64), int(aliensVerticalPos));
+		//player
+		sprite->draw(int(playerPos.x), int(playerPos.y));
+		for (int i = 0; i < rocketPos.size(); i++){
+			rocket->draw(int(rocketPos[i].x), int(rocketPos[i].y));
+		}
+		//alien1->draw(screenX - 32, screenY - 32);
+		for (int i = 0; i < alienPos.size(); i++){
+			
+			alien1->draw(int(alienPos[i].x), int(alienPos[i].y));
 		}
 		for (int i = 0; i < nbrBombs; i++){
-			bomb->draw(int(bombHorizontalPos[i]), bombVerticalPos[i]);
+			bomb->draw(int(bombPos[i].x), bombPos[i].y);
 		}
+		//get player movement
 		float newTime = system->getElapsedTime();
 		float move = (newTime - lastTime) * 160.0f;
+		float alienSpeed = (newTime - lastTime) * 120.0f;
 		lastTime = newTime;
-
 		IDiceInvaders::KeyStatus keys;
 		system->getKeyStatus(keys);
 		if (keys.right){
-			if (horizontalPosition +move +32 < screenX)
-				horizontalPosition += move;
+			if (playerPos.x + move + 32 <= screenX)
+				playerPos.x += move;
 		}
 		else if (keys.left){
-			if (horizontalPosition -move > 0)
-				horizontalPosition -= move;
+			if (playerPos.x - move >= 0)
+				playerPos.x -= move;
 		}
+
 		//move rockets (before instantiating new ones)
-		for (int i = 0; i < nbrRockets; i++){
-			rocketVerticalPos[i] -= move;
-			if (rocketVerticalPos[i] < 0){//remove the rocket at position i
-				for (int j = i; j < nbrRockets; j++){
- 					rocketVerticalPos[j] = rocketVerticalPos[j + 1];
-					rocketHorizontalPos[j] = rocketHorizontalPos[j + 1];
-					
-				}
-				nbrRockets--;
+		for (int i = 0; i < rocketPos.size(); i++){
+			rocketPos[i].y -= move;
+			if (rocketPos[i].y < 0){//remove the rocket outside screen
+				rocketPos.erase(rocketPos.begin() + i);
+				//nbrRockets--;
+				//rocketPos[i].y = rocketPos[nbrRockets].y;
+				//rocketPos[i].x = rocketPos[nbrRockets].x;
 			}
-			
+
 		}
 		if (keys.fire){
 			if (lastRocketFireTime + 0.5f < newTime){
 				lastRocketFireTime = newTime;
-				if (nbrRockets < maxNbrRockets){
-					rocketHorizontalPos[nbrRockets] = horizontalPosition;
-					rocketVerticalPos[nbrRockets] = screenY - 64;
-					nbrRockets++;
+				if (rocketPos.size() < maxNbrRockets){
+					rocketPos.push_back(Vec2f(playerPos.x, playerPos.y + 32));
+					//	rocketPos[nbrRockets].x = playerPos.x;
+				//	rocketPos[nbrRockets].y = screenY - 64;
+				//	nbrRockets++;
 				}
 			}
 		}
 
 
-		//move aliens
-		if (alienDirectionRight)
-			aliensHorizontalPos += move;
-		else
-			aliensHorizontalPos -= move;
-		if (aliensHorizontalPos - 32 > screenX){
-			aliensHorizontalPos -= move;
-			alienDirectionRight = false;
-			aliensVerticalPos += 32;
+		//calculate alien movement
+		if (alienPos[alienPos.size() - 1].x + 32 >= screenX&&alienDirection == 1.0f){
+			alienDirection = -1.0f;
+			alienMovement = Vec2f(-alienSpeed, 32.0f);
 		}
-		else if(aliensHorizontalPos-nbrAliens*64<0){
-			aliensHorizontalPos += move;
-			alienDirectionRight = true;
-			aliensVerticalPos += 32;
+		else if (alienPos[leftAlien].x <= 0 && alienDirection == -1.0f){
+			alienDirection = 1.0f;
+			alienMovement = Vec2f(alienSpeed, 32.0f);
 		}
-		if (aliensVerticalPos <= 0){
-			//game over
+		else{
+			alienMovement = Vec2f(alienSpeed*alienDirection, 0.0f);
 		}
+		//process aliens
+		for (int i = alienPos.size() - 1; i >= 0; i--){
+			//move
+			alienPos[i] = alienPos[i]+ alienMovement;
 
-		//spawn bombs
-		int random = rand()/100;
-		if (random == 1 && nbrBombs<6){
-			nbrBombs++;
-			bombHorizontalPos[nbrBombs] = aliensHorizontalPos;//specify wich alien
-			bombVerticalPos[nbrBombs] = aliensVerticalPos+32;
+			//detect colision
+			for (int j = 0; j< rocketPos.size(); j++){
+				if (rocketPos[j].x + 16 > alienPos[i].x &&    rocketPos[j].x + 16 < alienPos[i].x + 32
+					&& rocketPos[j].y + 16 > alienPos[i].y && rocketPos[j].y + 16 < alienPos[i].y + 32){
+					alienPos.erase(alienPos.begin() + i);
+					rocketPos.erase(rocketPos.begin() + j);
+				//	nbrRockets--;
+				//	rocketPos[i] = rocketPos[nbrRockets];
+					
+				}
+			}
+			
 		}
 		
+		if (alienPos[alienPos.size()-1].y <= 0){
+			//game over
+		}
+		
+
+		//spawn bombs
+		int random = rand()/10000;
+		if (random == 1 && nbrBombs<6){		
+			int alien = rand() % alienPos.size();
+			bombPos[nbrBombs].x = alienPos[alien].x;//specify wich alien
+			bombPos[nbrBombs].y = alienPos[alien].y + 64;
+			nbrBombs++;
+		}
+	
 		//move bombs
-		for (int i = 0; i < nbrBombs; i++){
-			bombVerticalPos[i] += move;
-			if (bombVerticalPos[i] > screenY){//remove the rocket at position i
-				for (int j = i; j < nbrBombs; j++){
-					bombVerticalPos[j] = bombVerticalPos[j + 1];
-					bombVerticalPos[j] = bombVerticalPos[j + 1];
-				}
-				nbrBombs--;
+	/*	for (int i = 0; i < nbrBombs; i++){
+			bombPos[i].y += move;
+			if (bombPos[i].y > screenY ){//remove rockets outside screen
+					nbrBombs--;
+					bombPos[i] = bombPos[nbrBombs];
 			}
 
+			//collision detection
+			if (bombPos[i].x + 16 > playerPos.x &&    bombPos[i].x + 16 < playerPos.x + 32
+				&& bombPos[i].y + 16 > playerPos.y && bombPos[i].y + 16 < playerPos.y + 32){
+				lives--;
+				bombPos[i] = bombPos[nbrBombs - 1];
+				nbrBombs--;
+			}
 		}
+		
+		/* Detect collisions
+		rocket alien
+		player alien 
+		bomb player*/
+
+
+
 	}
 	alien1->destroy();
 	rocket->destroy();
 	sprite->destroy();
 	system->destroy();
-
 	return 0;
 }
 
