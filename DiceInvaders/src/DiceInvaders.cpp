@@ -54,23 +54,43 @@ struct Vec2f{
 	float y;
 };
 
-class AlienArmy{
-public:
-	int maxNbrAliensRow = 8;
-	int maxNbrAliensCol = 2;
+struct Alien
+{
+	Alien(Vec2f posin, const ISprite &spritein) :pos(posin), sprite(spritein){};
+	Vec2f pos;
+	const ISprite &sprite;
 	
-	Vec2f aliensPos[8][2];// *64;
-	//float aliensBottomVerticalPos = 0;
+};
+class AlienArmy{ //we don't have a matrix, lines are hard to keep track of
+public:
+	
+	std::vector<Vec2f> alienPos;
+	AlienArmy(int aliensRow = 8,int aliensCol = 2){
+		for (int i = 0; i < aliensCol; i++){
+			for (int j = 0; j < aliensRow; j++){
+				alienPos.push_back(Vec2f(j * 64, i * 64));
+			}
+		}
+	}
+	void CalculareMovement(){}
+	void collisionDetection(){}
+	//speed
+	int rightAlien = alienPos.size() - 1;
+	int leftAlien = 0;
 	float alienDirection = 1.0f;
-
-
-
-	int nbrBombs = 0;
-	float bombHorizontalPos[6];
-	float bombVerticalPos[6];
+	Vec2f alienMovement = Vec2f(0, 0);
 };
 
-
+static void CreateArmy(std::vector<Alien> &aliens, const ISprite& alien1, const ISprite& alien2){
+	for (int i = 0; i < 4; i++){//row
+		for (int j = 0; j < 8; j++){//col
+			if (i<2)
+				aliens.push_back(Alien(Vec2f(j * 64, i * 64),alien2));
+			else
+				aliens.push_back(Alien(Vec2f(j * 64, i * 64), alien1));
+		}
+	}
+}
 int APIENTRY WinMain(
 	HINSTANCE instance,
 	HINSTANCE previousInstance,
@@ -88,31 +108,33 @@ int APIENTRY WinMain(
 	ISprite* alien1 = system->createSprite("data/enemy1.bmp");
 	ISprite* alien2 = system->createSprite("data/enemy2.bmp");
 	ISprite* bomb = system->createSprite("data/bomb.bmp");
-
+	
+	//initiate player
 	Vec2f playerPos = Vec2f(screenX / 2, screenY - 32);
 	float lastTime = system->getElapsedTime();
 	std::vector<Vec2f> rocketPos;
 	static int maxNbrRockets = 6;
 
-
+	//initiate alienArmy
 	int aliensRow = 8;
 	int aliensCol =2;
-
 	std::vector<Vec2f> alienPos;
+	std::vector<Alien> aliens;
 	for (int i = 0; i < aliensCol; i++){
 		for (int j = 0; j < aliensRow; j++){
 			alienPos.push_back(Vec2f(j * 64, i * 64));
 		}
 	}
+	CreateArmy(aliens,*alien1,*alien2);
 	int rightAlien = alienPos.size() - 1;
 	int leftAlien = 0;
 	float alienDirection = 1.0f;
 	Vec2f alienMovement = Vec2f(0,0);
+	
 
-
-	int nbrBombs = 0;
-	Vec2f bombPos[6];
-
+	//int nbrBombs = 0;
+	std::vector<Vec2f> bombPos;
+	static int maxNbrBombs = 6;
 	int lives = 3;
 
 	float lastRocketFireTime = lastTime;
@@ -136,7 +158,7 @@ int APIENTRY WinMain(
 			
 			alien1->draw(int(alienPos[i].x), int(alienPos[i].y));
 		}
-		for (int i = 0; i < nbrBombs; i++){
+		for (int i = 0; i < bombPos.size(); i++){
 			bomb->draw(int(bombPos[i].x), bombPos[i].y);
 		}
 		//get player movement
@@ -160,21 +182,13 @@ int APIENTRY WinMain(
 			rocketPos[i].y -= move;
 			if (rocketPos[i].y < 0){//remove the rocket outside screen
 				rocketPos.erase(rocketPos.begin() + i);
-				//nbrRockets--;
-				//rocketPos[i].y = rocketPos[nbrRockets].y;
-				//rocketPos[i].x = rocketPos[nbrRockets].x;
 			}
 
 		}
-		if (keys.fire){
+		if (keys.fire&&rocketPos.size() < maxNbrRockets){
 			if (lastRocketFireTime + 0.5f < newTime){
 				lastRocketFireTime = newTime;
-				if (rocketPos.size() < maxNbrRockets){
-					rocketPos.push_back(Vec2f(playerPos.x, playerPos.y + 32));
-					//	rocketPos[nbrRockets].x = playerPos.x;
-				//	rocketPos[nbrRockets].y = screenY - 64;
-				//	nbrRockets++;
-				}
+					rocketPos.push_back(Vec2f(playerPos.x, playerPos.y - 32));
 			}
 		}
 
@@ -191,62 +205,61 @@ int APIENTRY WinMain(
 		else{
 			alienMovement = Vec2f(alienSpeed*alienDirection, 0.0f);
 		}
-		//process aliens
-		for (int i = alienPos.size() - 1; i >= 0; i--){
-			//move
-			alienPos[i] = alienPos[i]+ alienMovement;
 
-			//detect colision
+		//process aliens  
+		for (auto it = alienPos.begin(); it < alienPos.end(); ++it){
+			//move
+			(*it) = (*it) + alienMovement;
+			if ((*it).y > screenY){
+				//game over
+				break;
+			}
+		}
+		//Split loops as a fix to a bug where the position whould randomly change on collision
+		for (auto it = alienPos.begin(); it < alienPos.end(); ++it){
+			//detect collision
 			for (int j = 0; j< rocketPos.size(); j++){
-				if (rocketPos[j].x + 16 > alienPos[i].x &&    rocketPos[j].x + 16 < alienPos[i].x + 32
-					&& rocketPos[j].y + 16 > alienPos[i].y && rocketPos[j].y + 16 < alienPos[i].y + 32){
-					alienPos.erase(alienPos.begin() + i);
+				if (rocketPos[j].x + 16 >(*it).x &&    rocketPos[j].x + 16 < (*it).x + 32
+					&& rocketPos[j].y + 16 > (*it).y && rocketPos[j].y + 16 <(*it).y + 32){
+					it =alienPos.erase(it); 
 					rocketPos.erase(rocketPos.begin() + j);
-				//	nbrRockets--;
-				//	rocketPos[i] = rocketPos[nbrRockets];
-					
 				}
 			}
-			
-		}
-		
-		if (alienPos[alienPos.size()-1].y <= 0){
-			//game over
+			if (it != alienPos.end()&&(playerPos.x + 16 > (*it).x &&    playerPos.x + 16 < (*it).x + 32
+				&& playerPos.y< (*it).y))
+			{
+				lives--;
+				it = alienPos.erase(it);
+			}
+			if (it == alienPos.end())
+				break;//if we removed last object in vector
 		}
 		
 
 		//spawn bombs
-		int random = rand()/10000;
-		if (random == 1 && nbrBombs<6){		
+		int random = rand()%100000;
+		if (random == 1 && bombPos.size()<maxNbrBombs){
 			int alien = rand() % alienPos.size();
-			bombPos[nbrBombs].x = alienPos[alien].x;//specify wich alien
-			bombPos[nbrBombs].y = alienPos[alien].y + 64;
-			nbrBombs++;
+			bombPos.push_back(alienPos[alien]);
 		}
 	
 		//move bombs
-	/*	for (int i = 0; i < nbrBombs; i++){
+		for (int i = 0; i < bombPos.size(); i++){
 			bombPos[i].y += move;
-			if (bombPos[i].y > screenY ){//remove rockets outside screen
-					nbrBombs--;
-					bombPos[i] = bombPos[nbrBombs];
-			}
 
 			//collision detection
 			if (bombPos[i].x + 16 > playerPos.x &&    bombPos[i].x + 16 < playerPos.x + 32
 				&& bombPos[i].y + 16 > playerPos.y && bombPos[i].y + 16 < playerPos.y + 32){
 				lives--;
-				bombPos[i] = bombPos[nbrBombs - 1];
-				nbrBombs--;
+				bombPos.erase(bombPos.begin() + i);
 			}
+
+			else if (bombPos[i].y > screenY ){//remove rockets outside screen
+				bombPos.erase(bombPos.begin() + i);
+			}
+
+			
 		}
-		
-		/* Detect collisions
-		rocket alien
-		player alien 
-		bomb player*/
-
-
 
 	}
 	alien1->destroy();
